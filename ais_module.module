@@ -1,0 +1,998 @@
+<?php
+
+function get_all_nodes_for_nodetype($node_type)
+{
+	$qtype = db_query("select nid as nid from node where type = '$node_type'")->fetchCol();
+	return $qtype;
+}
+
+function get_node_type($nid)
+{
+	$qtype = db_query("select type as type from node where nid = $nid")->fetchObject();
+	return $qtype->type;
+	
+}
+function get_node_title($nid)
+{
+	$qtype = db_query("select title as title from node where nid = $nid")->fetchObject();
+	return $qtype->title;
+	
+}
+function get_nid_from_title_type($title, $type)
+{
+	$qtype = db_query("select nid as nid from node where title = '$title' and type = '$type'")->fetchObject();
+	return $qtype->nid;
+	
+}
+function get_node_changed($nid)
+{
+	$qtype = db_query("select changed from node where nid = $nid")->fetchObject();
+	return date("Y-m-d H:i", $qtype->changed);
+	
+}
+function get_node_created_date($nid)
+{
+	$qtype = db_query("select created from node where nid = $nid")->fetchObject();
+	return date("Y-m-d H:i", $qtype->created);
+	
+}
+
+function get_user_from_username($username)
+{
+	$uid = 0;
+	$qry = db_query("Select uid from users where name = '".$username."'");
+	if($qry->rowCount() > 0)
+	{
+		$res = $qry->fetchObject();
+		$uid = $res->uid;
+	}
+	return $uid;
+}
+
+function get_user_from_emailid($emailid)
+{
+	$uid = 0;
+	$qry = db_query("Select uid from users where mail = '".$emailid."'");
+	if($qry->rowCount() > 0)
+	{
+		$res = $qry->fetchObject();
+		$uid = $res->uid;
+	}
+	return $uid;
+}
+
+function get_user_details($uid)
+{
+	$userdet = "";
+	$qusers = db_query("
+	Select	
+		u.name as Name,
+		r.name as role
+	FROM	
+		users u,
+		users_roles ur,
+		role r
+	WHERE  u.uid = ur.uid
+		AND ur.rid = r.rid
+		AND u.uid = $uid ");
+	if($qusers -> rowCount() >0)
+	{
+		$res = $qusers->fetchObject();
+		$userdet = array($res->Name,$res->role);
+		
+	}
+	return $userdet;
+}
+
+
+function get_content_value_from_table($fieldname, $valuetype, $entity_id)
+{
+	$query = db_query("SELECT tab.field_".$fieldname."_".$valuetype." as content
+				FROM field_data_field_".$fieldname." tab 
+				WHERE tab.entity_id =  ".$entity_id);
+	if($query->rowCount() > 0)
+	{
+		$res = $query->fetchObject();
+		return $res->content;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_multiple_columns_value_from_table($fieldnames, $valuetypes, $node_type, $order_by)
+{
+	
+	$select_field = array();
+	$index = 0;
+	$from_field = array();
+	foreach($fieldnames as $fname)
+	{
+		$select_field[] =  " tab".$index.".field_".$fname."_".$valuetypes[$index]." as $fname ";
+		$from_field[] =  " field_data_field_".$fname." tab".$index." ";
+		$index++;
+	}
+	$where_field[0] = " tab0.bundle = '".$node_type."' ";
+	for($whereindex = 0; $whereindex < $index - 1; $whereindex++)
+	{
+		$where_field[] =  " AND tab".$whereindex.".entity_id =  tab".($whereindex+1).".entity_id ";
+		
+	}
+	$order_by_text = '';
+	if(count($order_by) > 0)
+	{
+		$order_by_arr = array();
+		foreach($order_by as $oi)
+			$order_by_arr[] = $fieldnames[$oi];
+		$order_by_text = ' order by '.implode(", ", $order_by_arr);
+	}
+	
+	$sql = "SELECT tab0.entity_id as nid, ".implode(", ", $select_field)." FROM ".implode(", ", $from_field)." WHERE ".implode(" ", $where_field)." ".$order_by_text;
+	$query = db_query($sql)->fetchAllAssoc('nid');
+	if(count($query) > 0)
+	{
+		$res = array();
+		
+		foreach($query as $row)
+		{
+			$res[] = (array)$row;
+			
+		}
+		return $res;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function array_sort($array, $on, $order=SORT_ASC){
+
+    $new_array = array();
+    $sortable_array = array();
+
+    if (count($array) > 0) {
+        foreach ($array as $k => $v) {
+            if (is_array($v)) {
+                foreach ($v as $k2 => $v2) {
+                    if ($k2 == $on) {
+                        $sortable_array[$k] = $v2;
+                    }
+                }
+            } else {
+                $sortable_array[$k] = $v;
+            }
+        }
+
+        switch ($order) {
+            case SORT_ASC:
+                asort($sortable_array);
+                break;
+            case SORT_DESC:
+                arsort($sortable_array);
+                break;
+        }
+
+        foreach ($sortable_array as $k => $v) {
+            $new_array[$k] = $array[$k];
+        }
+    }
+
+    return $new_array;
+}
+
+
+
+function get_delta_from_multiple_value_for_entity($fieldname, $valuetype, $entity_id, $content)
+{
+		$nextd    = 0;
+		$qnextvin = db_query("Select delta as prevd 
+		from field_data_field_".$fieldname."
+		where entity_id = " . $entity_id . " and field_".$fieldname."_".$valuetype." = '" . $content."'");
+		if ($qnextvin->rowCount() > 0)
+		{
+			$res   = $qnextvin->fetchObject();
+			$nextd = $res->prevd;
+			return $nextd;
+		}
+		else
+		{
+			return null;
+		}
+
+}
+
+function check_exisiting_content_for_entity($field_name, $valuetype, $entity_id, $content)
+{
+	$query = db_query("SELECT count(tab.entity_id) as total 
+				FROM field_data_field_".$field_name." tab 
+				WHERE tab.entity_id =  ".$entity_id." 
+				AND tab.field_".$field_name."_".$valuetype." = ".$content);
+	if($query->rowCount() > 0)
+	{
+		$res = $query->fetchObject();
+		return $res->total;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_entityid_value_from_table($fieldname, $valuetype, $content)
+{
+	$query = db_query("SELECT tab.entity_id as nid
+				FROM field_data_field_".$fieldname." tab 
+				WHERE tab.field_".$fieldname."_".$valuetype." = '".$content."'");
+	$multi = array();
+	if($query->rowCount() > 0)
+	{
+		$multi = array();
+		foreach($query as $res)
+		{
+			$nodecheck = db_query("Select nid from node where nid = ".$res->nid)->fetchCol();
+			if(count($nodecheck) > 0)
+			{
+				array_push($multi, $res->nid);
+			}
+		}
+		return $multi;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_entityid_value_for_multiple_field_contents($fieldnames, $valuetypes, $contents)
+{
+	$from_query = '';
+	$where_query = '';
+	$fi = 0;
+	foreach($fieldnames as $fieldname)
+	{
+		$from_query .= " field_data_field_".$fieldname." tab".$fi.",";
+		$where_query .= " tab".$fi.".field_".$fieldname."_".$valuetypes[$fi]." =  ".$contents[$fi]." AND ";
+		if($fi > 0)
+		{
+			$where_query .= " tab0.entity_id =  tab".$fi.".entity_id AND ";
+		}
+		$fi++;
+	}
+	$from_query = rtrim($from_query, ",");
+	$where_query = rtrim($where_query, "AND ");
+	$sql = "SELECT tab0.entity_id as nid
+				FROM ".$from_query." 
+				WHERE ".$where_query;
+
+	//return $sql;
+	// set_drupal_message($sql);
+	$query = db_query($sql);
+	$multi = array();
+	if($query->rowCount() > 0)
+	{
+		$multi = array();
+		foreach($query as $res)
+		{
+			array_push($multi, $res->nid);
+		}
+		return $multi;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_entityid_value_for_multiple_field_contents_for_bundle($fieldnames, $valuetypes, $contents, $bundle)
+{
+	$from_query = '';
+	$where_query = '';
+	$fi = 0;
+	foreach($fieldnames as $fieldname)
+	{
+		$from_query .= " field_data_field_".$fieldname." tab".$fi.",";
+		$where_query .= " tab".$fi.".field_".$fieldname."_".$valuetypes[$fi]." =  ".$contents[$fi]." AND ";
+		if($fi > 0)
+		{
+			$where_query .= " tab0.entity_id =  tab".$fi.".entity_id AND ";
+		}
+		$fi++;
+	}
+	$from_query = rtrim($from_query, ",");
+	$where_query = rtrim($where_query, "AND ");
+	$sql = "SELECT tab0.entity_id as nid
+				FROM node n, ".$from_query." 
+				WHERE n.nid = tab0.entity_id and n.type = '".$bundle."' and ".$where_query;
+
+	//return $sql;
+	$query = db_query($sql);
+	$multi = array();
+	if($query->rowCount() > 0)
+	{
+		$multi = array();
+		foreach($query as $res)
+		{
+			array_push($multi, $res->nid);
+		}
+		return $multi;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_entityid_value_for_multiple_field_contents_for_uid($fieldnames, $valuetypes, $contents, $uid)
+{
+	$from_query = '';
+	$where_query = '';
+	$fi = 0;
+	foreach($fieldnames as $fieldname)
+	{
+		$from_query .= " field_data_field_".$fieldname." tab".$fi.",";
+		$where_query .= " tab".$fi.".field_".$fieldname."_".$valuetypes[$fi]." =  ".$contents[$fi]." AND ";
+		if($fi > 0)
+		{
+			$where_query .= " tab0.entity_id =  tab".$fi.".entity_id AND ";
+		}
+		$fi++;
+	}
+	$from_query = rtrim($from_query, ",");
+	$where_query = rtrim($where_query, "AND ");
+	$sql = "SELECT tab0.entity_id as nid
+				FROM node n, ".$from_query." 
+				WHERE n.nid = tab0.entity_id and n.uid = ".$uid." and ".$where_query;
+
+	//return $sql;
+	$query = db_query($sql);
+	$multi = array();
+	if($query->rowCount() > 0)
+	{
+		$multi = array();
+		foreach($query as $res)
+		{
+			array_push($multi, $res->nid);
+		}
+		return $multi;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_content_multiple_value_from_table($fieldname, $valuetype, $entity_id)
+{
+	$query = db_query("SELECT tab.field_".$fieldname."_".$valuetype." as content, delta as delta 
+				FROM field_data_field_".$fieldname." tab 
+				WHERE tab.entity_id =  ".$entity_id);
+	$multi = array();
+	if($query->rowCount() > 0)
+	{
+		$multi = array();
+		foreach($query as $res)
+		{
+			//array_push($multi, $res->content);
+			$multi[$res->delta] = $res->content;
+		}
+		return $multi;
+	}
+	else
+	{
+		return null;
+	}
+}
+
+function get_tid_from_termdata($termname)
+{
+	$query = db_query("SELECT tid as tid FROM taxonomy_term_data WHERE name='$termname'");
+	$row = $query->fetchObject();
+	return $row -> tid;
+
+}
+
+
+function get_term_name_by_id($tid){
+  $name = db_query('SELECT 
+						name 
+				    FROM 
+						taxonomy_term_data 
+					WHERE 
+						tid = :tid', 
+					array(':tid' => $tid)
+				   )->fetchField();
+  return $name;
+}
+
+function get_tid_from_term_vocab_data($termname, $vocabname)
+{
+	$query = db_query("select 
+	t.tid
+from
+	taxonomy_vocabulary v,
+	taxonomy_term_data t
+where
+	v.name = '".$vocabname."'
+	AND t.vid = v.vid
+	AND t.name = '".$termname."'");
+	$row = $query->fetchObject();
+	return $row -> tid;	
+
+}
+
+function sort_nodes_in_order_of_tid_weight($nids)
+{
+	$newarray = array();
+	foreach($nids as $nid=>$tid)
+	{
+		
+		$query = db_query("select 
+	weight
+from
+	taxonomy_term_data 
+where
+	tid = ".$tid);
+		$row = $query->fetchObject();
+		$newarray[$nid] = $row->weight;
+		
+	}
+	asort($newarray);
+	return $newarray;
+}
+
+
+function get_content_nid_value_pair_for_a_field($fieldname, $valuetype)
+{
+	$query = db_query("SELECT tab.entity_id as nid, tab.field_".$fieldname."_".$valuetype." as content
+				FROM field_data_field_".$fieldname." tab ORDER BY nid");
+	$list = array();
+	foreach($query as $pair)
+	{
+		$list[$pair->nid] = $pair->content;
+	}
+	return $list;
+}
+
+function set_drupal_message($msg)
+{
+	drupal_set_message("<pre>".print_r($msg, true)."</pre>");
+}
+
+function get_file_uri($fid)
+{
+	$query = db_query("SELECT uri FROM file_managed WHERE fid = :id", array(':id' => $fid));
+	if($query->rowCount() > 0)
+	{
+	   $result = $query->fetchObject();
+	   // $uri = str_replace('public://', '', $result->uri);
+	   // $url = 'sites/default/files/'.$uri;
+	   // $url = file_create_url($result->uri);
+	   return $result->uri;
+	}
+	else
+	{
+	   return null;
+	}
+}
+
+
+function get_image_file_search($fid)
+{
+	$query = db_query("SELECT uri FROM file_managed WHERE fid = :id", array(':id' => $fid));
+	if($query->rowCount() > 0)
+	{
+	   $result = $query->fetchObject();
+	   $uri = str_replace('public://', '', $result->uri);
+	   $url = 'sites/default/files/'.$uri;
+	   $url = file_create_url($result->uri);
+	   return $url;
+	}
+	else
+	{
+	   $url = 'sites/default/files/no_image_0.png';
+	   return $url;
+	}
+}
+
+
+function convertNumber($number)
+{
+    //list($integer, $fraction) = explode(".", (string) $number);
+	$integer = $number;
+    $output = "";
+
+    if ($integer{0} == "-")
+    {
+        $output = "negative ";
+        $integer    = ltrim($integer, "-");
+    }
+    else if ($integer{0} == "+")
+    {
+        $output = "positive ";
+        $integer    = ltrim($integer, "+");
+    }
+
+    if ($integer{0} == "0")
+    {
+        $output .= "zero";
+    }
+    else
+    {
+        $integer = str_pad($integer, 36, "0", STR_PAD_LEFT);
+        $group   = rtrim(chunk_split($integer, 3, " "), " ");
+        $groups  = explode(" ", $group);
+
+        $groups2 = array();
+        foreach ($groups as $g)
+        {
+            $groups2[] = convertThreeDigit($g{0}, $g{1}, $g{2});
+        }
+
+        for ($z = 0; $z < count($groups2); $z++)
+        {
+            if ($groups2[$z] != "")
+            {
+                $output .= $groups2[$z] . convertGroup(11 - $z) . (
+                        $z < 11
+                        && !array_search('', array_slice($groups2, $z + 1, -1))
+                        && $groups2[11] != ''
+                        && $groups[11]{0} == '0'
+                            ? " and "
+                            : ", "
+                    );
+            }
+        }
+
+        $output = rtrim($output, ", ");
+    }
+
+
+    return $output;
+}
+
+function billing_access(){
+	GLOBAL $user;
+	$user_roles = array('billing', 'administrator');
+	foreach($user_roles as $value)	{
+		if(in_array($value, $user->roles))		{
+			$access = true;
+			break;
+		}else{
+			$access = false;
+		} 
+	}
+	return $access;
+}
+function superadmin_access(){
+	GLOBAL $user;
+	$user_roles = array('superadmin', 'administrator');
+	foreach($user_roles as $value)	{
+		if(in_array($value, $user->roles))		{
+			$access = true;
+			break;
+		}else{
+			$access = false;
+		} 
+	}
+	return $access;
+}
+
+function convertGroup($index)
+{
+    switch ($index)
+    {
+        case 11:
+            return " decillion";
+        case 10:
+            return " nonillion";
+        case 9:
+            return " octillion";
+        case 8:
+            return " septillion";
+        case 7:
+            return " sextillion";
+        case 6:
+            return " quintrillion";
+        case 5:
+            return " quadrillion";
+        case 4:
+            return " trillion";
+        case 3:
+            return " billion";
+        case 2:
+            return " million";
+        case 1:
+            return " Thousand";
+        case 0:
+            return "";
+    }
+}
+
+function convertThreeDigit($digit1, $digit2, $digit3)
+{
+    $buffer = "";
+
+    if ($digit1 == "0" && $digit2 == "0" && $digit3 == "0")
+    {
+        return "";
+    }
+
+    if ($digit1 != "0")
+    {
+        $buffer .= convertDigit($digit1) . " Hundred";
+        if ($digit2 != "0" || $digit3 != "0")
+        {
+            $buffer .= " and ";
+        }
+    }
+
+    if ($digit2 != "0")
+    {
+        $buffer .= convertTwoDigit($digit2, $digit3);
+    }
+    else if ($digit3 != "0")
+    {
+        $buffer .= convertDigit($digit3);
+    }
+
+    return $buffer;
+}
+
+function convertTwoDigit($digit1, $digit2)
+{
+    if ($digit2 == "0")
+    {
+        switch ($digit1)
+        {
+            case "1":
+                return "Ten";
+            case "2":
+                return "Twenty";
+            case "3":
+                return "Thirty";
+            case "4":
+                return "Forty";
+            case "5":
+                return "Fifty";
+            case "6":
+                return "Sixty";
+            case "7":
+                return "Seventy";
+            case "8":
+                return "Eighty";
+            case "9":
+                return "Ninety";
+        }
+    } else if ($digit1 == "1")
+    {
+        switch ($digit2)
+        {
+            case "1":
+                return "Eleven";
+            case "2":
+                return "Twelve";
+            case "3":
+                return "Thirteen";
+            case "4":
+                return "Fourteen";
+            case "5":
+                return "Fifteen";
+            case "6":
+                return "Sixteen";
+            case "7":
+                return "Seventeen";
+            case "8":
+                return "Eighteen";
+            case "9":
+                return "Nineteen";
+        }
+    } else
+    {
+        $temp = convertDigit($digit2);
+        switch ($digit1)
+        {
+            case "2":
+                return "Twenty-$temp";
+            case "3":
+                return "Thirty-$temp";
+            case "4":
+                return "Forty-$temp";
+            case "5":
+                return "Fifty-$temp";
+            case "6":
+                return "Sixty-$temp";
+            case "7":
+                return "Seventy-$temp";
+            case "8":
+                return "Eighty-$temp";
+            case "9":
+                return "Ninety-$temp";
+        }
+    }
+}
+
+function convertDigit($digit)
+{
+    switch ($digit)
+    {
+        case "0":
+            return "zero";
+        case "1":
+            return "One";
+        case "2":
+            return "Two";
+        case "3":
+            return "Three";
+        case "4":
+            return "Four";
+        case "5":
+            return "Five";
+        case "6":
+            return "Six";
+        case "7":
+            return "Seven";
+        case "8":
+            return "Eight";
+        case "9":
+            return "Nine";
+    }
+}
+
+function get_select_options_list_for_title_for_nodetype($type)
+{
+	$query = db_query("select nid, title from node where type = '".$type."'");
+	$databases->close();
+	$res = array();
+	foreach($query as $val)
+	{
+		$res[$val->nid] = $val->title;
+	}
+	return $res;
+}
+
+function get_select_options_list_for_content($field_name, $type)
+{
+	$query = db_query('Select entity_id as nid, field_'.$field_name.'_'.$type.' as text from field_data_field_'.$field_name);
+	$res = array();
+	foreach($query as $val)
+	{
+		$res[$val->nid] = $val->text;
+	}
+	return $res;
+}
+
+// function get_select_options_list_for_content_with_filter($field_name, $type, $filter_fields, $filter_values)
+// {
+	// $query = db_query('Select entity_id as nid, field_'.$field_name.'_'.$type.' as text from field_data_field_'.$field_name);
+	// $res = array();
+	// foreach($query as $val)
+	// {
+		// $res[$val->nid] = $val->text;
+	// }
+	// return $res;
+// }
+
+function get_select_options_list_for_taxonomy($vocabname)
+{
+	$query = db_query("SELECT tx.tid as tid, tx.name as name
+FROM taxonomy_term_data tx,
+taxonomy_vocabulary tv
+WHERE tx.vid = tv.vid
+AND tv.name = '".$vocabname."'");
+	$res = array();
+	foreach($query as $val)
+	{
+		$res[$val->tid] = $val->name;
+	}
+	return $res;
+}
+
+function clean($string) 
+{
+   $string = str_replace(' ', '_', $string); // Replaces all spaces with hyphens.
+
+   return preg_replace('/[^A-Za-z0-9\-]/', '', $string); // Removes special chars.
+}
+
+function get_next_delta($field_name, $entity_id)
+{
+	$newd = 0;
+	$query = "Select max(delta) as newd from field_data_field_".$field_name." where entity_id = ".$entity_id;
+	$res = db_query($query)->fetchObject();
+	if(!is_null($res->newd))
+	{
+		$newd = $res->newd + 1;
+	}
+	return $newd;
+	
+}
+
+function node_save_fast($node)
+{
+$transaction = db_transaction();
+
+  try {
+    if (!empty($node->nid) && !isset($node->original)) {
+      $node->original = entity_load_unchanged('node', $node->nid);
+    }
+
+    // field_attach_presave('node', $node);
+    global $user;
+
+    if (!isset($node->is_new)) {
+      $node->is_new = empty($node->nid);
+    }
+
+    if (empty($node->created)) {
+      $node->created = REQUEST_TIME;
+    }
+    $node->changed = REQUEST_TIME;
+    $node->timestamp = REQUEST_TIME;
+    $update_node = TRUE;
+
+    if ($node->is_new || !empty($node->revision)) {
+      if (!isset($node->log)) {
+        $node->log = '';
+      }
+    }
+    elseif (!isset($node->log) || $node->log === '') {
+      unset($node->log);
+    }
+
+    if (!$node->is_new && !empty($node->revision) && $node->vid) {
+      $node->old_vid = $node->vid;
+      unset($node->vid);
+    }
+
+    if ($node->is_new) {
+      drupal_write_record('node', $node);
+      _node_save_revision($node, $user->uid);
+      $op = 'insert';
+    }
+    else {
+      drupal_write_record('node', $node, 'nid');
+      if (!empty($node->revision)) {
+        _node_save_revision($node, $user->uid);
+      }
+      else {
+        _node_save_revision($node, $user->uid, 'vid');
+        $update_node = FALSE;
+      }
+      $op = 'update';
+    }
+    if ($update_node) {
+      db_update('node')->fields(array('vid' => $node->vid))->condition('nid', $node->nid)->execute();
+    }
+
+    // Call the node specific callback (if any). This can be
+    // node_invoke($node, 'insert') or
+    // node_invoke($node, 'update').
+    node_invoke($node, $op);
+
+    // Save fields.
+    $function = "field_attach_$op";
+    $function('node', $node);
+
+    $delete = $op == 'update';
+    node_access_acquire_grants($node, $delete);
+
+    unset($node->is_new);
+    unset($node->original);
+    entity_get_controller('node')->resetCache(array($node->nid));
+
+    db_ignore_slave();
+  }
+  catch (Exception $e) {
+    $transaction->rollback();
+    watchdog_exception('node', $e);
+    throw $e;
+  }	
+}
+
+function node_save_new($type, $uid, $title)
+{
+	$nid = db_insert('node') // Table name no longer needs {}
+	->fields(array(
+	  'type' => $type,
+	  'title' => $title,
+	  'uid' => $uid,
+	  'created' => REQUEST_TIME,
+	  'changed' => REQUEST_TIME,
+	))
+	->execute();
+	db_query("Update node set vid = nid where nid = ".$nid);
+	$nid_r = db_insert('node_revision') // Table name no longer needs {}
+	->fields(array(
+	  'nid' => $nid,
+	  'title' => $title,
+	  'uid' => $uid,
+	  'timestamp' => REQUEST_TIME,
+	  'log' => '',
+	))
+	->execute();
+	set_drupal_message($nid);
+	return $nid;
+}
+
+function field_add_new($field_name, $bundle, $nid, $type, $value)
+{
+	$fid = db_insert('field_data_field_'.$field_name) // Table name no longer needs {}
+	->fields(array(
+	  'entity_type' => 'node',
+	  'bundle' => $bundle,
+	  'deleted' => 0,
+	  'entity_id' => $nid,
+	  'revision_id' => $nid,
+	  'language' => 'und',
+	  'delta' => 0,
+	  'field_'.$field_name."_".$type => $value,
+	))
+	->execute();
+	
+	$fidr = db_insert('field_revision_field_'.$field_name) // Table name no longer needs {}
+	->fields(array(
+	  'entity_type' => 'node',
+	  'bundle' => $bundle,
+	  'deleted' => 0,
+	  'entity_id' => $nid,
+	  'revision_id' => $nid,
+	  'language' => 'und',
+	  'delta' => 0,
+	  'field_'.$field_name."_".$type => $value,
+	))
+	->execute();
+	
+}
+
+function field_update_new($field_name, $type, $nid, $value)
+{
+	db_query('Update field_data_field_'.$field_name.' set field_'.$field_name."_".$type." = '".$value."' where entity_id = ".$nid)->execute();
+	db_query('Update field_revision_field_'.$field_name.' set field_'.$field_name."_".$type." = '".$value."' where entity_id = ".$nid)->execute();
+	return;
+}
+
+function number_to_words_indian_format($number)
+{
+   $no = round($number);
+   $point = round($number - $no, 2) * 100;
+   $hundred = null;
+   $digits_1 = strlen($no);
+   $i = 0;
+   $str = array();
+   $words = array('0' => '', '1' => 'one', '2' => 'two',
+    '3' => 'three', '4' => 'four', '5' => 'five', '6' => 'six',
+    '7' => 'seven', '8' => 'eight', '9' => 'nine',
+    '10' => 'ten', '11' => 'eleven', '12' => 'twelve',
+    '13' => 'thirteen', '14' => 'fourteen',
+    '15' => 'fifteen', '16' => 'sixteen', '17' => 'seventeen',
+    '18' => 'eighteen', '19' =>'nineteen', '20' => 'twenty',
+    '30' => 'thirty', '40' => 'forty', '50' => 'fifty',
+    '60' => 'sixty', '70' => 'seventy',
+    '80' => 'eighty', '90' => 'ninety');
+   $digits = array('', 'hundred', 'thousand', 'lakh', 'crore');
+   while ($i < $digits_1) {
+     $divider = ($i == 2) ? 10 : 100;
+     $number = floor($no % $divider);
+     $no = floor($no / $divider);
+     $i += ($divider == 10) ? 1 : 2;
+     if ($number) {
+        $plural = (($counter = count($str)) && $number > 9) ? 's' : null;
+        $hundred = ($counter == 1 && $str[0]) ? ' and ' : null;
+        $str [] = ($number < 21) ? $words[$number] .
+            " " . $digits[$counter] . $plural . " " . $hundred
+            :
+            $words[floor($number / 10) * 10]
+            . " " . $words[$number % 10] . " "
+            . $digits[$counter] . $plural . " " . $hundred;
+     } else $str[] = null;
+  }
+  $str = array_reverse($str);
+  $result = implode('', $str);
+  $points = ($point) ?
+    "." . $words[$point / 10] . " " . 
+          $words[$point = $point % 10] : '';
+		  
+  return "Rupees  ".$result;// ." Paise " . $points;	
+}
